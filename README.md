@@ -1,7 +1,6 @@
 # Factorial-Design-Analysis-Tool
 
 
-### Factorial Design Analysis Tool
 
 #### Project Overview
 
