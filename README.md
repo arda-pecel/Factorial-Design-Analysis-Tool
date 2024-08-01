@@ -47,7 +47,3 @@ After running the experiments and inputting the results, the tool calculates and
 #### Conclusion
 
 The Factorial Design Analysis Tool simplifies the analysis of factorial experiments by providing a comprehensive yet user-friendly interface for defining factors, inputting results, and visualizing effects with confidence intervals. This tool aids researchers and practitioners in making informed decisions based on experimental data, ultimately leading to improved processes and outcomes.
-
----
-
-This document provides a clear and comprehensive overview of your project, highlighting its features, functionality, and potential applications.
