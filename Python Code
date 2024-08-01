@@ -1,0 +1,226 @@
+import itertools
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import t
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+
+# Generate factorial design matrix
+def generate_factorial_design(factors):
+    levels = [2] * len(factors)  # Two levels for each factor
+    factor_names = list(factors.keys())
+    all_combinations = list(itertools.product(*[range(level) for level in levels]))
+    
+    design_matrix = []
+    for combination in all_combinations:
+        row = {factor_names[i]: factors[factor_names[i]][combination[i]] for i in range(len(combination))}
+        design_matrix.append(row)
+    
+    return design_matrix
+
+# Get factors from user input in a single dialog
+def get_factors_from_user():
+    factors = {}
+    num_factors = int(simpledialog.askstring("Input", "Enter the number of factors:", parent=root))
+    
+    # Create a new window to get all factor names and levels
+    input_window = tk.Toplevel(root)
+    input_window.title("Enter Factors and Levels")
+
+    factor_entries = []
+    
+    for i in range(num_factors):
+        tk.Label(input_window, text=f"Factor {i+1} Name:").grid(row=i*3, column=0, sticky='w')
+        factor_name_entry = tk.Entry(input_window)
+        factor_name_entry.grid(row=i*3, column=1, sticky='w')
+        tk.Label(input_window, text=f"Level 1 for Factor {i+1}:").grid(row=i*3+1, column=0, sticky='w')
+        level1_entry = tk.Entry(input_window)
+        level1_entry.grid(row=i*3+1, column=1, sticky='w')
+        tk.Label(input_window, text=f"Level 2 for Factor {i+1}:").grid(row=i*3+2, column=0, sticky='w')
+        level2_entry = tk.Entry(input_window)
+        level2_entry.grid(row=i*3+2, column=1, sticky='w')
+        factor_entries.append((factor_name_entry, level1_entry, level2_entry))
+    
+    def submit_factors():
+        for entry in factor_entries:
+            factor_name = entry[0].get().strip()
+            level1 = entry[1].get().strip()
+            level2 = entry[2].get().strip()
+            if factor_name and level1 and level2:
+                factors[factor_name] = [level1, level2]
+            else:
+                messagebox.showerror("Input Error", "All fields must be filled.")
+                return
+        
+        input_window.destroy()
+    
+    submit_button = tk.Button(input_window, text="Submit", command=submit_factors)
+    submit_button.grid(row=num_factors*3, column=0, columnspan=2)
+
+    root.wait_window(input_window)
+    
+    return factors
+
+# Calculate main effects and interaction effects
+def calculate_effects(design_matrix, factors):
+    factor_names = list(factors.keys())
+    interactions = list(itertools.combinations(factor_names, 2)) + [tuple(factor_names)]
+
+    main_effects = {factor: 0 for factor in factor_names}
+    interaction_effects = {f"{'*'.join(inter)}": 0 for inter in interactions}
+
+    grand_mean = sum(row['Result'] for row in design_matrix) / len(design_matrix)
+
+    for factor in factor_names:
+        positive_sum = sum(row['Result'] for row in design_matrix if row[factor] == factors[factor][1])
+        negative_sum = sum(row['Result'] for row in design_matrix if row[factor] == factors[factor][0])
+        main_effects[factor] = (positive_sum - negative_sum) / (len(design_matrix) / 2)
+
+    for interaction in interaction_effects.keys():
+        factor_combinations = interaction.split('*')
+        effect_sum = 0
+        for row in design_matrix:
+            product = 1
+            for factor in factor_combinations:
+                product *= (1 if row[factor] == factors[factor][1] else -1)
+            effect_sum += product * row['Result']
+        interaction_effects[interaction] = effect_sum / (len(design_matrix) / 4)
+
+    return grand_mean, main_effects, interaction_effects
+
+# Calculate confidence intervals
+def calculate_confidence_intervals(effects, num_samples):
+    alphas = [0.05, 0.01, 0.001]  # For 95%, 99%, and 99.9% confidence intervals
+    intervals = {}
+    
+    for alpha in alphas:
+        standard_error = np.std(list(effects.values())) / np.sqrt(num_samples)
+        t_value = t.ppf(1 - alpha / 2, df=num_samples - 1)
+        intervals[alpha] = t_value * standard_error
+    
+    return intervals
+
+# Plot effects with confidence intervals
+def plot_effects_with_confidence_intervals(main_effects, interaction_effects, intervals):
+    effects = list(main_effects.keys()) + list(interaction_effects.keys())
+    x = np.arange(len(effects))
+    
+    means = [main_effects.get(effect, interaction_effects.get(effect)) for effect in effects]
+    mean_value = np.mean(means)  # Central value
+
+    plt.figure(figsize=(14, 8))
+    
+    # Extend the confidence interval areas to cover the full x range
+    plt.fill_between([-1, len(effects)], mean_value - intervals[0.05], mean_value + intervals[0.05], color='blue', alpha=0.2, label='95% Confidence Interval')
+    plt.fill_between([-1, len(effects)], mean_value - intervals[0.01], mean_value + intervals[0.01], color='green', alpha=0.2, label='99% Confidence Interval')
+    plt.fill_between([-1, len(effects)], mean_value - intervals[0.001], mean_value + intervals[0.001], color='red', alpha=0.2, label='99.9% Confidence Interval')
+
+    # Add a horizontal line at y=0
+    plt.axhline(y=0, color='black', linestyle='--', linewidth=1.5)
+
+    # Plot effects
+    bars = plt.bar(x, means, alpha=0.5, color='blue', label='Effects')
+
+    # Add value annotations for effects
+    for i, (effect, mean) in enumerate(zip(effects, means)):
+        plt.text(i, mean, f'{mean:.2f}', ha='center', va='bottom', fontsize=9, color='black')
+
+    # Add value annotations for confidence intervals
+    for alpha, color in zip([0.05, 0.01, 0.001], ['blue', 'green', 'red']):
+        plt.text(len(effects)-0.5, mean_value + intervals[alpha] + 0.5, f'{alpha*100:.1f}% CI', color=color, fontsize=12, ha='right')
+
+    # Create importance indicators
+    for i, mean in enumerate(means):
+        if abs(mean) > intervals[0.001]:
+            importance = "very important ***"
+        elif abs(mean) > intervals[0.01]:
+            importance = "important **"
+        elif abs(mean) > intervals[0.05]:
+            importance = "slightly important *"
+        else:
+            importance = "not important"
+        plt.text(i, min(mean, 0) - 1, importance, ha='center', va='top', fontsize=10, color='black')
+
+    # Add confidence interval values on the left side
+    plt.text(-0.5, mean_value - intervals[0.05] - 0.5, f'95% CI: ±{intervals[0.05]:.2f}', color='blue', fontsize=12, va='top')
+    plt.text(-0.5, mean_value - intervals[0.01] - 0.5, f'99% CI: ±{intervals[0.01]:.2f}', color='green', fontsize=12, va='top')
+    plt.text(-0.5, mean_value - intervals[0.001] - 0.5, f'99.9% CI: ±{intervals[0.001]:.2f}', color='red', fontsize=12, va='top')
+
+    # Format x-ticks for main effects and interactions
+    tick_labels = []
+    for effect in effects:
+        if '*' in effect:
+            tick_labels.append('\n'.join(effect.split('*')))
+        else:
+            tick_labels.append(effect)
+    
+    plt.xticks(x, tick_labels, rotation=0)
+    plt.title('Main Effects and Interaction Effects with Confidence Intervals')
+    plt.xlabel('Effects')
+    plt.ylabel('Effects')
+    plt.legend()
+    plt.tight_layout()
+    
+    plt.show()
+
+def run_analysis(factors, factor_entries):
+    design_matrix = generate_factorial_design(factors)
+    
+    for i, entry in enumerate(factor_entries):
+        try:
+            design_matrix[i]['Result'] = float(entry.get())
+        except ValueError:
+            messagebox.showerror("Input Error", f"Invalid result value for test {i+1}. Please enter a valid number.")
+            return
+    
+    grand_mean, main_effects, interaction_effects = calculate_effects(design_matrix, factors)
+    num_samples = len(design_matrix)
+    
+    # Calculate confidence intervals
+    intervals = calculate_confidence_intervals({**main_effects, **interaction_effects}, num_samples)
+    
+    # Plot: Shows 95%, 99%, and 99.9% confidence intervals
+    plot_effects_with_confidence_intervals(main_effects, interaction_effects, intervals)
+
+# Create the main window
+root = tk.Tk()
+root.title("Factorial Design Analysis")
+
+frame = tk.Frame(root, padx=20, pady=20)
+frame.pack(padx=10, pady=10)
+
+label = tk.Label(frame, text="Factorial Design Analysis Tool", font=("Arial", 16))
+label.pack(pady=10)
+
+# Step 1: Get factors and levels from user
+factors = get_factors_from_user()
+
+# Generate the design matrix
+design_matrix = generate_factorial_design(factors)
+
+factor_entries = []
+
+# Create entries for each design point
+factor_frame = tk.Frame(frame)
+factor_frame.pack(pady=10)
+
+for i, design_point in enumerate(design_matrix):
+    row_frame = tk.Frame(factor_frame)
+    row_frame.pack(fill='x', pady=2)
+    
+    label_text = f"Test {i+1} ("
+    label_text += ", ".join([f"{key}={value}" for key, value in design_point.items() if key != 'Result'])
+    label_text += "):"
+    
+    label = tk.Label(row_frame, text=label_text)
+    label.pack(side="left")
+    
+    entry = tk.Entry(row_frame)
+    entry.pack(side="right")
+    factor_entries.append(entry)
+
+# Add a button to run the analysis
+run_button = tk.Button(frame, text="Run Analysis", command=lambda: run_analysis(factors, factor_entries))
+run_button.pack(pady=10)
+
+root.mainloop()
