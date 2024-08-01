@@ -1,6 +1,7 @@
 # Factorial-Design-Analysis-Tool
 
 
+An exe file can be created from command prompt
 
 #### Project Overview
 
